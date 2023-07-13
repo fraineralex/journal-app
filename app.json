@@ -1,0 +1,8 @@
+{
+  "expo": {
+    "name": "Daily",
+    "scheme": "daily-app",
+    "version": "1.0.0",
+    "slug": "daily-app"
+  }
+}
