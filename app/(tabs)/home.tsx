@@ -14,43 +14,39 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import * as SQLite from 'expo-sqlite';
 import moment from 'moment';
 
-const db = SQLite.openDatabase('diary.db');
+const db = SQLite.openDatabase('emergency-app.db');
 
-type Experience = {
+type Emergency = {
   id: string;
   title: string;
   date: string;
   description: string;
-  photo: string;
-  audio: string | null;
+  image: string;
 };
 
 const HomeScreen: React.FC = () => {
-  const [experiences, setExperiences] = useState<Experience[]>([]);
+  const [emergencies, setEmergencies] = useState<Emergency[]>([]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [selectedAudio, setSelectedAudio] = useState<string | null>(null);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [isViewModalVisible, setIsViewModalVisible] = useState(false);
-  const [selectedExperience, setSelectedExperience] = useState<Experience | null>(null);
+  const [selectedEmergency, setSelectedEmergency] = useState<Emergency | null>(null);
 
   useEffect(() => {
     createTable();
-    loadExperiences();
+    loadEmergencies();
   }, []);
 
   const createTable = () => {
     db.transaction((tx) => {
       tx.executeSql(
-        'CREATE TABLE IF NOT EXISTS experiences (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, date TEXT, description TEXT, photo TEXT, audio TEXT)',
+        'CREATE TABLE IF NOT EXISTS emergencies (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, date TEXT, description TEXT, image TEXT)',
         [],
         () => console.log('Table created'),
         (_, error) => console.log('Error creating table:', error)
@@ -58,29 +54,23 @@ const HomeScreen: React.FC = () => {
     });
   };
 
-  const loadExperiences = () => {
+  const loadEmergencies = () => {
     db.transaction((tx) => {
       tx.executeSql(
-        'SELECT * FROM experiences',
+        'SELECT * FROM emergencies',
         [],
         (_, { rows }) => {
-          setExperiences(rows._array.reverse());
+          setEmergencies(rows._array.reverse());
         },
-        (_, error) => console.log('Error loading experiences:', error)
+        (_, error) => console.log('Error loading emergencies:', error)
       );
     });
   };
 
-  const handleAddExperience = async () => {
+  const handleAddEmergency = async () => {
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status !== 'granted') {
       console.log('Permission to access media library was denied');
-      return;
-    }
-
-    const { granted } = await Audio.requestPermissionsAsync();
-    if (!granted) {
-      console.log('Permission to access audio was denied');
       return;
     }
 
@@ -96,7 +86,7 @@ const HomeScreen: React.FC = () => {
     setSelectedImage(imageResult.assets[0].uri);
   };
 
-  const handleTakePhoto = async () => {
+  const handleTakeImage = async () => {
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status !== 'granted') {
       console.log('Permission to access media library was denied');
@@ -111,140 +101,63 @@ const HomeScreen: React.FC = () => {
     setSelectedImage(imageResult.assets[0].uri);
   };
 
-  const handleChooseAudio = async () => {
-    const { granted } = await Audio.requestPermissionsAsync();
-    if (!granted) {
-      console.log('Permission to access audio was denied');
-      return;
-    }
-
-    const audioResult = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Audio,
-    });
-    if (audioResult.canceled) {
-      console.log('Audio selection was cancelled');
-      return;
-    }
-    setSelectedAudio(audioResult.uri);
-  };
-
-  async function startRecording() {
-    try {
-      console.log('Requesting permissions..');
-      await Audio.requestPermissionsAsync();
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      console.log('Starting recording..');
-      const { recording } = await Audio.Recording.createAsync( Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(recording);
-      console.log('Recording started');
-    } catch (err) {
-      console.error('Failed to start recording', err);
-    }
-  }
-
-  async function stopRecording() {
-    console.log('Stopping recording..');
-    setRecording(undefined);
-    await recording.stopAndUnloadAsync();
-    await Audio.setAudioModeAsync(
-      {
-        allowsRecordingIOS: false,
-      }
-    );
-    const uri = recording.getURI();
-    console.log('Recording stopped and stored at', uri);
-    setSelectedAudio(uri);
-  }
-
-  const handleSaveExperience = () => {
+  const handleSaveEmergency = () => {
     Keyboard.dismiss();
 
     if (selectedImage && title && description) {
-      const experience: Experience = {
+      const emergency: Emergency = {
         id: Date.now().toString(),
         title,
         date: new Date().toISOString(),
         description,
-        photo: selectedImage,
-        audio: selectedAudio,
+        image: selectedImage
       };
       db.transaction((tx) => {
         tx.executeSql(
-          'INSERT INTO experiences (id, title, date, description, photo, audio) VALUES (?, ?, ?, ?, ?, ?)',
+          'INSERT INTO emergencies (id, title, date, description, image) VALUES (?, ?, ?, ?, ?)',
           [
-            experience.id,
-            experience.title,
-            experience.date,
-            experience.description,
-            experience.photo,
-            experience.audio,
+            emergency.id,
+            emergency.title,
+            emergency.date,
+            emergency.description,
+            emergency.image,
           ],
           () => {
-            console.log('Experience added');
-            setExperiences((prevExperiences) => [experience, ...prevExperiences]);
+            console.log('Emergency added');
+            setEmergencies((prevEmergencies) => [emergency, ...prevEmergencies]);
             setTitle('');
             setDescription('');
             setSelectedImage(null);
-            setRecording(null)
-            setSelectedAudio(null);
             setIsAddModalVisible(false);
           },
-          (_, error) => console.log('Error adding experience:', error)
+          (_, error) => console.log('Error adding emergency:', error)
         );
       });
     }
   };
 
-  const handleDeleteAllExperiences = () => {
-    db.transaction((tx) => {
-      tx.executeSql(
-        'DELETE FROM experiences',
-        [],
-        () => {
-          console.log('All experiences deleted');
-          setExperiences([]);
-        },
-        (_, error) => console.log('Error deleting experiences:', error)
-      );
-    });
-  };
-
-  const handleExperiencePress = async (experience: Experience) => {
-    setSelectedExperience(experience);
+  const handleEmergencyPress = async (emergency: Emergency) => {
+    setSelectedEmergency(emergency);
     setIsViewModalVisible(true);
-
-    if (experience.audio) {
-      try {
-        const { sound } = await Audio.Sound.createAsync({ uri: experience.audio });
-        await sound.playAsync();
-      } catch (error) {
-        console.log('Error playing audio:', error);
-      }
-    }
   };
 
-  const ExperienceItem: React.FC<{ experience: Experience }> = ({ experience }) => (
+  const EmergencyItem: React.FC<{ emergency: Emergency }> = ({ emergency }) => (
     <TouchableOpacity
-      style={styles.experienceItem}
-      onPress={() => handleExperiencePress(experience)}
+      style={styles.emergencyItem}
+      onPress={() => handleEmergencyPress(emergency)}
     >
-      <View style={styles.experienceImageContainer}>
+      <View style={styles.emergencyImageContainer}>
         <Image
-          source={{ uri: experience.photo }}
-          style={styles.experienceImage}
+          source={{ uri: emergency.image }}
+          style={styles.emergencyImage}
           resizeMode="cover"
         />
       </View>
-      <View style={styles.experienceContent}>
-        <Text style={styles.experienceTitle}>{experience.title}</Text>
-        <Text style={styles.experienceDescription}>{experience.description}</Text>
-        <Text style={styles.experienceDate}>
-          {moment(experience.date).fromNow()}
+      <View style={styles.emergencyContent}>
+        <Text style={styles.emergencyTitle}>{emergency.title}</Text>
+        <Text style={styles.emergencyDescription}>{emergency.description}</Text>
+        <Text style={styles.emergencyDate}>
+          {moment(emergency.date).fromNow()}
         </Text>
       </View>
     </TouchableOpacity>
@@ -252,25 +165,20 @@ const HomeScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      <Text style={{color: 'white', fontSize: 25, fontWeight: 'bold', alignSelf: 'center', marginBottom: 25, marginTop: 10}}>EMERGENCIES 🏥</Text>
       <FlatList
-        data={experiences}
-        renderItem={({ item }) => <ExperienceItem experience={item} />}
+        data={emergencies}
+        renderItem={({ item }) => <EmergencyItem emergency={item} />}
         keyExtractor={(item) => item.id}
-        ListEmptyComponent={<Text>No experiences registered.</Text>}
+        ListEmptyComponent={<Text>No emergencies registered.</Text>}
         contentContainerStyle={styles.flatListContent}
       />
       <View style={styles.buttonsContainer}>
         <TouchableOpacity
           style={[styles.button, styles.addButton]}
-          onPress={handleAddExperience}
+          onPress={handleAddEmergency}
         >
-          <Text style={{ color: '#000', fontWeight: 'bold' }}>Add Experience</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.button, styles.deleteButton]}
-          onPress={handleDeleteAllExperiences}
-        >
-          <Text style={styles.buttonText}>Delete All</Text>
+          <Ionicons name="md-add-circle" size={30} color="black" />
         </TouchableOpacity>
       </View>
 
@@ -284,7 +192,7 @@ const HomeScreen: React.FC = () => {
               >
                 <Ionicons name="close-outline" size={24} color="#FFF" />
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>Add Experience</Text>
+              <Text style={styles.modalTitle}>Add Emergency</Text>
               {selectedImage && (
                 <>
                   <Image
@@ -307,26 +215,10 @@ const HomeScreen: React.FC = () => {
                     placeholderTextColor="#888"
                     multiline
                   />
-                  <View style={styles.chooseAudioButtonsContainer}>
-                    <TouchableOpacity
-                      style={styles.chooseAudioButton}
-                      onPress={handleChooseAudio}
-                    >
-                      <Text style={styles.chooseAudioText}>Choose Audio</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.chooseAudioButton}
-                      onPress={recording ? stopRecording : startRecording}
-                    >
-                      <Text style={styles.chooseAudioText}>
-                        {recording ? 'Stop Recording' : 'Record Audio'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
                   <View style={styles.buttonContainer}>
                     <TouchableOpacity
                       style={[styles.button, styles.saveButton]}
-                      onPress={handleSaveExperience}
+                      onPress={handleSaveEmergency}
                     >
                       <Text style={[styles.buttonText, { color: '#000', fontWeight: 'bold' }]}>
                         Save
@@ -339,8 +231,6 @@ const HomeScreen: React.FC = () => {
                         setTitle('');
                         setDescription('');
                         setSelectedImage(null);
-                        setSelectedAudio(null);
-                        setRecording(null);
                       }}
                     >
                       <Text style={styles.buttonText}>Cancel</Text>
@@ -358,9 +248,9 @@ const HomeScreen: React.FC = () => {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.chooseImageButton}
-                    onPress={handleTakePhoto}
+                    onPress={handleTakeImage}
                   >
-                    <Text style={styles.chooseImageText}>Take Photo</Text>
+                    <Text style={styles.chooseImageText}>Take Image</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -372,7 +262,7 @@ const HomeScreen: React.FC = () => {
       <Modal visible={isViewModalVisible} animationType="slide" transparent>
         <TouchableWithoutFeedback onPress={() => setIsViewModalVisible(false)}>
           <View style={styles.modalContainer}>
-            {selectedExperience && (
+            {selectedEmergency && (
               <View style={styles.modalContent}>
                 <TouchableOpacity
                   style={styles.closeButton}
@@ -381,25 +271,17 @@ const HomeScreen: React.FC = () => {
                   <Ionicons name="close-outline" size={24} color="#FFF" />
                 </TouchableOpacity>
                 <Image
-                  source={{ uri: selectedExperience.photo }}
+                  source={{ uri: selectedEmergency.image }}
                   style={styles.selectedImage}
                   resizeMode="cover"
                 />
-                <Text style={styles.selectedTitle}>{selectedExperience.title}</Text>
+                <Text style={styles.selectedTitle}>{selectedEmergency.title}</Text>
                 <Text style={styles.selectedDescription}>
-                  {selectedExperience.description}
+                  {selectedEmergency.description}
                 </Text>
                 <Text style={styles.selectedDate}>
-                  {moment(selectedExperience.date).fromNow()}
+                  {moment(selectedEmergency.date).fromNow()}
                 </Text>
-                {selectedExperience.audio && (
-                  <TouchableOpacity
-                    style={styles.playAudioButton}
-                    onPress={handleExperiencePress}
-                  >
-                    <Ionicons name="play-outline" size={24} color="#FFF" />
-                  </TouchableOpacity>
-                )}
               </View>
             )}
           </View>
@@ -418,54 +300,54 @@ const styles = StyleSheet.create({
   flatListContent: {
     flexGrow: 1,
   },
-  experienceItem: {
+  emergencyItem: {
     flexDirection: 'row',
     marginBottom: 16,
   },
-  experienceImageContainer: {
+  emergencyImageContainer: {
     width: 100,
     height: 100,
     borderRadius: 10,
     overflow: 'hidden',
   },
-  experienceImage: {
+  emergencyImage: {
     flex: 1,
   },
-  experienceContent: {
+  emergencyContent: {
     flex: 1,
     marginLeft: 16,
     justifyContent: 'center',
   },
-  experienceTitle: {
+  emergencyTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFF',
   },
-  experienceDescription: {
+  emergencyDescription: {
     marginTop: 8,
     color: '#FFF',
   },
-  experienceDate: {
+  emergencyDate: {
     marginTop: 8,
     color: '#888',
     textAlign: 'right',
   },
   buttonsContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     marginTop: 16,
   },
   button: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 10,
-    marginHorizontal: 8,
+    marginHorizontal: 6,
   },
   addButton: {
     backgroundColor: '#FFF',
-  },
-  deleteButton: {
-    backgroundColor: 'red',
+    alignItems: 'flex-end',
+    height: 50,
+    with: 50
   },
   buttonText: {
     color: '#FFF',
@@ -525,23 +407,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginBottom: 12,
   },
-  chooseAudioButtonsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 12,
-  },
-  chooseAudioButton: {
-    backgroundColor: '#FFF',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    width: '48%',
-  },
-  chooseAudioText: {
-    color: '#000',
-    fontWeight: 'bold',
-  },
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -567,14 +432,6 @@ const styles = StyleSheet.create({
   selectedDate: {
     marginTop: 8,
     color: '#888',
-  },
-  playAudioButton: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: 50,
-    padding: 8,
   },
 });
 
