@@ -1,14 +1,4 @@
-# Expo Router Example
+# Daily App
 
-Use [`expo-router`](https://expo.github.io/router) to build native navigation using files in the `app/` directory.
-
-## 🚀 How to use
-
-```sh
-npx create-expo-app -e with-router
-```
-
-## 📝 Notes
-
-- [Expo Router: Docs](https://expo.github.io/router)
-- [Expo Router: Repo](https://github.com/expo/router)
+## Download APK
+🤖 Android app: https://expo.dev/artifacts/eas/fkFo7vSEqTgg6fGm5UjShc.apk

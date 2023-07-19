@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import * as SQLite from 'expo-sqlite';
 import moment from 'moment';
 
@@ -27,6 +28,7 @@ type Experience = {
   date: string;
   description: string;
   photo: string;
+  audio: string | null;
 };
 
 const HomeScreen: React.FC = () => {
@@ -34,6 +36,8 @@ const HomeScreen: React.FC = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedAudio, setSelectedAudio] = useState<string | null>(null);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [isViewModalVisible, setIsViewModalVisible] = useState(false);
   const [selectedExperience, setSelectedExperience] = useState<Experience | null>(null);
@@ -46,7 +50,7 @@ const HomeScreen: React.FC = () => {
   const createTable = () => {
     db.transaction((tx) => {
       tx.executeSql(
-        'CREATE TABLE IF NOT EXISTS experiences (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, date TEXT, description TEXT, photo TEXT)',
+        'CREATE TABLE IF NOT EXISTS experiences (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, date TEXT, description TEXT, photo TEXT, audio TEXT)',
         [],
         () => console.log('Table created'),
         (_, error) => console.log('Error creating table:', error)
@@ -68,18 +72,94 @@ const HomeScreen: React.FC = () => {
   };
 
   const handleAddExperience = async () => {
-    const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (granted) {
-      setIsAddModalVisible(true);
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== 'granted') {
+      console.log('Permission to access media library was denied');
+      return;
     }
+
+    const { granted } = await Audio.requestPermissionsAsync();
+    if (!granted) {
+      console.log('Permission to access audio was denied');
+      return;
+    }
+
+    setIsAddModalVisible(true);
   };
 
   const handleChooseImage = async () => {
     const imageResult = await ImagePicker.launchImageLibraryAsync();
-    if (!imageResult.canceled) {
-      setSelectedImage(imageResult.assets[0].uri);
+    if (imageResult.canceled) {
+      console.log('Image selection was cancelled');
+      return;
     }
+    setSelectedImage(imageResult.assets[0].uri);
   };
+
+  const handleTakePhoto = async () => {
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== 'granted') {
+      console.log('Permission to access media library was denied');
+      return;
+    }
+
+    const imageResult = await ImagePicker.launchCameraAsync();
+    if (imageResult.canceled) {
+      console.log('Image capture was cancelled');
+      return;
+    }
+    setSelectedImage(imageResult.assets[0].uri);
+  };
+
+  const handleChooseAudio = async () => {
+    const { granted } = await Audio.requestPermissionsAsync();
+    if (!granted) {
+      console.log('Permission to access audio was denied');
+      return;
+    }
+
+    const audioResult = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Audio,
+    });
+    if (audioResult.canceled) {
+      console.log('Audio selection was cancelled');
+      return;
+    }
+    setSelectedAudio(audioResult.uri);
+  };
+
+  async function startRecording() {
+    try {
+      console.log('Requesting permissions..');
+      await Audio.requestPermissionsAsync();
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      console.log('Starting recording..');
+      const { recording } = await Audio.Recording.createAsync( Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      setRecording(recording);
+      console.log('Recording started');
+    } catch (err) {
+      console.error('Failed to start recording', err);
+    }
+  }
+
+  async function stopRecording() {
+    console.log('Stopping recording..');
+    setRecording(undefined);
+    await recording.stopAndUnloadAsync();
+    await Audio.setAudioModeAsync(
+      {
+        allowsRecordingIOS: false,
+      }
+    );
+    const uri = recording.getURI();
+    console.log('Recording stopped and stored at', uri);
+    setSelectedAudio(uri);
+  }
 
   const handleSaveExperience = () => {
     Keyboard.dismiss();
@@ -91,16 +171,18 @@ const HomeScreen: React.FC = () => {
         date: new Date().toISOString(),
         description,
         photo: selectedImage,
+        audio: selectedAudio,
       };
       db.transaction((tx) => {
         tx.executeSql(
-          'INSERT INTO experiences (id, title, date, description, photo) VALUES (?, ?, ?, ?, ?)',
+          'INSERT INTO experiences (id, title, date, description, photo, audio) VALUES (?, ?, ?, ?, ?, ?)',
           [
             experience.id,
             experience.title,
             experience.date,
             experience.description,
             experience.photo,
+            experience.audio,
           ],
           () => {
             console.log('Experience added');
@@ -108,6 +190,8 @@ const HomeScreen: React.FC = () => {
             setTitle('');
             setDescription('');
             setSelectedImage(null);
+            setRecording(null)
+            setSelectedAudio(null);
             setIsAddModalVisible(false);
           },
           (_, error) => console.log('Error adding experience:', error)
@@ -130,9 +214,18 @@ const HomeScreen: React.FC = () => {
     });
   };
 
-  const handleExperiencePress = (experience: Experience) => {
+  const handleExperiencePress = async (experience: Experience) => {
     setSelectedExperience(experience);
     setIsViewModalVisible(true);
+
+    if (experience.audio) {
+      try {
+        const { sound } = await Audio.Sound.createAsync({ uri: experience.audio });
+        await sound.playAsync();
+      } catch (error) {
+        console.log('Error playing audio:', error);
+      }
+    }
   };
 
   const ExperienceItem: React.FC<{ experience: Experience }> = ({ experience }) => (
@@ -171,7 +264,7 @@ const HomeScreen: React.FC = () => {
           style={[styles.button, styles.addButton]}
           onPress={handleAddExperience}
         >
-          <Text style={{ color: '#000', fontWeight: 'bold'  }}>Add Experience</Text>
+          <Text style={{ color: '#000', fontWeight: 'bold' }}>Add Experience</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.button, styles.deleteButton]}
@@ -214,12 +307,30 @@ const HomeScreen: React.FC = () => {
                     placeholderTextColor="#888"
                     multiline
                   />
+                  <View style={styles.chooseAudioButtonsContainer}>
+                    <TouchableOpacity
+                      style={styles.chooseAudioButton}
+                      onPress={handleChooseAudio}
+                    >
+                      <Text style={styles.chooseAudioText}>Choose Audio</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.chooseAudioButton}
+                      onPress={recording ? stopRecording : startRecording}
+                    >
+                      <Text style={styles.chooseAudioText}>
+                        {recording ? 'Stop Recording' : 'Record Audio'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                   <View style={styles.buttonContainer}>
                     <TouchableOpacity
                       style={[styles.button, styles.saveButton]}
                       onPress={handleSaveExperience}
                     >
-                      <Text style={[styles.buttonText, { color: '#000', fontWeight: 'bold' }]}>Save</Text>
+                      <Text style={[styles.buttonText, { color: '#000', fontWeight: 'bold' }]}>
+                        Save
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.button, styles.cancelButton]}
@@ -228,6 +339,8 @@ const HomeScreen: React.FC = () => {
                         setTitle('');
                         setDescription('');
                         setSelectedImage(null);
+                        setSelectedAudio(null);
+                        setRecording(null);
                       }}
                     >
                       <Text style={styles.buttonText}>Cancel</Text>
@@ -236,12 +349,20 @@ const HomeScreen: React.FC = () => {
                 </>
               )}
               {!selectedImage && (
-                <TouchableOpacity
-                  style={styles.chooseImageButton}
-                  onPress={handleChooseImage}
-                >
-                  <Text style={styles.chooseImageText}>Choose Image</Text>
-                </TouchableOpacity>
+                <View style={styles.chooseImageButtonsContainer}>
+                  <TouchableOpacity
+                    style={styles.chooseImageButton}
+                    onPress={handleChooseImage}
+                  >
+                    <Text style={styles.chooseImageText}>Choose Image</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.chooseImageButton}
+                    onPress={handleTakePhoto}
+                  >
+                    <Text style={styles.chooseImageText}>Take Photo</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           </View>
@@ -271,6 +392,14 @@ const HomeScreen: React.FC = () => {
                 <Text style={styles.selectedDate}>
                   {moment(selectedExperience.date).fromNow()}
                 </Text>
+                {selectedExperience.audio && (
+                  <TouchableOpacity
+                    style={styles.playAudioButton}
+                    onPress={handleExperiencePress}
+                  >
+                    <Ionicons name="play-outline" size={24} color="#FFF" />
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>
@@ -365,11 +494,18 @@ const styles = StyleSheet.create({
     color: '#FFF',
     marginBottom: 16,
   },
+  chooseImageButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 12,
+  },
   chooseImageButton: {
     backgroundColor: '#FFF',
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 10,
+    width: '48%',
   },
   chooseImageText: {
     color: '#000',
@@ -388,6 +524,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     marginBottom: 12,
+  },
+  chooseAudioButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 12,
+  },
+  chooseAudioButton: {
+    backgroundColor: '#FFF',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    width: '48%',
+  },
+  chooseAudioText: {
+    color: '#000',
+    fontWeight: 'bold',
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -414,6 +567,14 @@ const styles = StyleSheet.create({
   selectedDate: {
     marginTop: 8,
     color: '#888',
+  },
+  playAudioButton: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 50,
+    padding: 8,
   },
 });
 

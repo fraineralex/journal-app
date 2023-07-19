@@ -3,6 +3,14 @@
     "name": "Daily",
     "scheme": "daily-app",
     "version": "1.0.0",
-    "slug": "daily-app"
+    "slug": "daily-app",
+    "extra": {
+      "eas": {
+        "projectId": "eba9709c-a415-4521-8169-7380b339ea74"
+      }
+    },
+    "android": {
+      "package": "com.fraineralex.dailyapp"
+    }
   }
 }
