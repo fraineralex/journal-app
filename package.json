@@ -35,7 +35,7 @@
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "@babel/plugin-proposal-export-namespace-from": "^7.18.9",
-    "axios": "^1.4.0",
+    "axios": "^1.6.0",
     "react-native-render-html": "^6.3.4"
   },
   "resolutions": {
